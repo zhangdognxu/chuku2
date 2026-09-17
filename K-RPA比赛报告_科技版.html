@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>K-RPA 劳动竞赛 · 资材出库作业自动化</title>
+<!-- Hallmark · macrostructure: 04-stat-led (dark/atmospheric) · 单强调色(青) · 等宽数据字体 + 黑体正文 -->
+<!-- Hallmark · pre-emit critique: P4 H5 E4 S5 R5 V4 -->
+<style>
+  :root {
+    --bg:        oklch(14.5% 0.020 250);
+    --bg-2:      oklch(18% 0.024 250);
+    --panel:     oklch(21% 0.026 250);
+    --panel-2:   oklch(24% 0.028 250);
+    --line:      oklch(33% 0.030 250);
+    --line-2:    oklch(42% 0.040 250);
+    --ink:       oklch(94% 0.010 250);
+    --ink-2:     oklch(80% 0.015 250);
+    --muted:     oklch(66% 0.020 250);
+    --cyan:      oklch(82% 0.115 195);
+    --cyan-dim:  oklch(58% 0.090 195);
+    --green:     oklch(82% 0.130 150);
+    --amber:     oklch(83% 0.120 78);
+    --mono: "JetBrains Mono", "Cascadia Mono", Consolas, "Courier New", monospace;
+    --body: "Microsoft YaHei", "PingFang SC", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink); font-family: var(--body);
+    line-height: 1.65; -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  /* 顶部装饰层: 限定高度, 不平铺全屏(避免滚动重绘拖慢渲染) */
+  .hero-bg {
+    position: absolute; top: 0; left: 0; right: 0; height: 440px; pointer-events: none; z-index: 0;
+    background:
+      radial-gradient(760px 340px at 14% 0%, oklch(58% 0.09 195 / .20), transparent 62%);
+  }
+  .hero-bg::after {
+    content: ""; position: absolute; inset: 0;
+    background-image:
+      linear-gradient(oklch(34% 0.03 250 / .22) 1px, transparent 1px),
+      linear-gradient(90deg, oklch(34% 0.03 250 / .22) 1px, transparent 1px);
+    background-size: 46px 46px;
+    mask-image: linear-gradient(180deg, #000, transparent 92%);
+    -webkit-mask-image: linear-gradient(180deg, #000, transparent 92%);
+  }
+  .wrap { position: relative; z-index: 1; }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 26px 30px 80px; }
+
+  /* 状态条 */
+  .hud {
+    display: flex; flex-wrap: wrap; gap: 8px 26px; align-items: center;
+    font-family: var(--mono); font-size: 12px; color: var(--muted);
+    border: 1px solid var(--line); border-radius: 4px; padding: 9px 14px; margin-bottom: 22px;
+    background: oklch(19% 0.024 250 / .72);
+  }
+  .hud .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--green);
+              box-shadow: 0 0 8px var(--green); margin-right: 7px; }
+  .hud .k { color: var(--cyan-dim); }
+  .hud .v { color: var(--ink-2); }
+
+  /* 标题 */
+  .eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .22em; color: var(--cyan);
+             text-transform: uppercase; margin-bottom: 12px; }
+  h1 {
+    font-family: var(--mono); font-size: 40px; font-weight: 700; margin: 0 0 14px;
+    letter-spacing: -.5px; line-height: 1.15; color: var(--ink);
+    text-shadow: 0 0 16px oklch(58% 0.09 195 / .35);
+  }
+  .lede { font-size: 15px; color: var(--ink-2); max-width: 64ch; margin: 0 0 22px; }
+
+  /* 数据看板 */
+  .board { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1px; background: var(--line);
+           border: 1px solid var(--line); border-radius: 4px; overflow: hidden; margin-bottom: 30px; }
+  .cell { background: linear-gradient(180deg, var(--panel-2), var(--panel)); padding: 16px 14px 14px; position: relative; }
+  .cell:before { content: ""; position: absolute; left: 0; top: 0; width: 100%; height: 2px;
+                 background: linear-gradient(90deg, var(--cyan), transparent); opacity: .55; }
+  .cell .n { font-family: var(--mono); font-size: 30px; font-weight: 700; color: var(--cyan);
+             line-height: 1.05; text-shadow: 0 0 12px oklch(58% 0.09 195 / .45); }
+  .cell .n.green { color: var(--green); text-shadow: 0 0 12px oklch(60% 0.13 150 / .40); }
+  .cell .n small { font-size: 14px; font-weight: 500; margin-left: 4px; color: var(--ink-2); }
+  .cell .l { font-size: 13px; color: var(--ink-2); margin-top: 9px; }
+  .cell .s { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+  /* 章节 */
+  .sec { margin-bottom: 32px; }
+  .sec-h {
+    display: flex; align-items: baseline; gap: 12px; border-bottom: 1px solid var(--line-2);
+    padding-bottom: 10px; margin-bottom: 18px;
+  }
+  .sec-h .idx { font-family: var(--mono); font-size: 13px; color: var(--cyan); letter-spacing: .1em; }
+  .sec-h h2 { font-size: 20px; margin: 0; font-weight: 600; color: var(--ink); }
+  .sec-h .w { margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  h3 { font-size: 15px; margin: 0 0 8px; color: var(--ink); font-weight: 600; }
+  p { margin: 0 0 12px; font-size: 14.5px; color: var(--ink-2); }
+  ul { margin: 0 0 12px; padding-left: 18px; }
+  li { font-size: 14.5px; color: var(--ink-2); margin-bottom: 6px; }
+  b, strong { color: var(--cyan); font-weight: 600; }
+
+  /* 四维度模块 */
+  .mods { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .mod { border: 1px solid var(--line); border-radius: 4px; background: oklch(19% 0.024 250 / .8);
+         padding: 16px 18px; position: relative; }
+  .mod:before, .mod:after { content: ""; position: absolute; width: 13px; height: 13px;
+                            border-color: var(--cyan); border-style: solid; opacity: .8; }
+  .mod:before { left: -1px; top: -1px; border-width: 2px 0 0 2px; }
+  .mod:after { right: -1px; bottom: -1px; border-width: 0 2px 2px 0; }
+  .mod-h { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .mod-h .no { font-family: var(--mono); font-size: 12px; color: var(--cyan); }
+  .mod-h .nm { font-size: 17px; font-weight: 600; color: var(--ink); }
+  .mod-h .wt { margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--muted);
+               border: 1px solid var(--line-2); border-radius: 2px; padding: 2px 7px; }
+  .pt { padding: 10px 0; border-top: 1px solid var(--line); }
+  .pt:first-of-type { border-top: none; }
+  .pt .t { font-size: 13px; color: var(--cyan-dim); font-family: var(--mono); margin-bottom: 5px; }
+  .pt .d { font-size: 14px; color: var(--ink-2); }
+
+  /* 链路 */
+  .chain { display: flex; gap: 12px; flex-wrap: wrap; }
+  .node { flex: 1 1 190px; border: 1px solid var(--line); border-radius: 4px; padding: 13px 15px;
+          background: var(--panel); position: relative; }
+  .node .st { font-family: var(--mono); font-size: 11px; color: var(--cyan); letter-spacing: .12em; }
+  .node .nt { font-size: 15px; font-weight: 600; margin-top: 6px; color: var(--ink); }
+  .node .nd { font-size: 13px; color: var(--muted); margin-top: 5px; }
+  .node + .node:before { content: "›"; position: absolute; left: -11px; top: 50%; transform: translateY(-50%);
+                          color: var(--cyan-dim); font-size: 17px; }
+
+  /* 成效条 */
+  .bar { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .bar .nm { flex: 0 0 106px; font-size: 13px; color: var(--muted); }
+  .bar .tr { flex: 1; height: 11px; background: oklch(26% 0.03 250); border-radius: 2px; overflow: hidden; }
+  .bar .fl { height: 100%; border-radius: 2px; }
+  .bar .fl.before { background: linear-gradient(90deg, oklch(58% 0.13 42), oklch(70% 0.14 55)); }
+  .bar .fl.after { background: linear-gradient(90deg, oklch(62% 0.13 150), oklch(78% 0.14 160));
+                   }
+  .bar .cap { flex: 0 0 208px; font-size: 13px; color: var(--ink-2); }
+  .bar .cap b { color: var(--ink); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); color: var(--ink-2); }
+  th { font-family: var(--mono); font-size: 12px; color: var(--cyan-dim); font-weight: 500; }
+  td.v { color: var(--ink); font-weight: 600; font-family: var(--mono); }
+
+  .grid2 { display: grid; grid-template-columns: 1.02fr .98fr; gap: 30px; }
+  .note { font-family: var(--mono); font-size: 11.5px; color: var(--muted); margin-top: 8px; }
+
+  footer { margin-top: 34px; border-top: 1px solid var(--line-2); padding-top: 16px;
+           display: flex; flex-wrap: wrap; gap: 8px 30px; font-family: var(--mono);
+           font-size: 12px; color: var(--muted); }
+  footer b { color: var(--ink); font-weight: 500; }
+
+  @media (max-width: 980px) {
+    .board { grid-template-columns: repeat(2, 1fr); }
+    .mods, .grid2 { grid-template-columns: 1fr; }
+    h1 { font-size: 28px; }
+    .bar .cap { flex: 1 1 100%; }
+  }
+  @media print {
+    body { background: #fff; color: #111; background-image: none; }
+    .cell, .mod, .node { background: #fafafa; }
+    h1 { color: #111; text-shadow: none; }
+    .cell .n, b, strong, .sec-h .idx { color: #0b6a80; text-shadow: none; }
+  }
+</style>
+</head>
+<body>
+<div class="hero-bg"></div>
+<div class="wrap">
+
+  <div class="hud">
+    <span><span class="dot"></span>系统在线</span>
+    <span><span class="k">项目</span> <span class="v">K-RPA 劳动竞赛参赛</span></span>
+    <span><span class="k">编号</span> <span class="v">CHUKU-AUTO-2026</span></span>
+    <span><span class="k">实施单位</span> <span class="v">长春宝友 · 设备组</span></span>
+    <span><span class="k">数据截止</span> <span class="v">2026-09-11</span></span>
+  </div>
+
+  <div class="eyebrow">RPA · 资材出库作业自动化</div>
+  <h1>把手工出库<br>改成自动落账</h1>
+  <p class="lede">IMC 资材领用单（MMPM0320）的手工逐条录入、手工勾选提交，改成手机填报与脚本批量提交。2026 年 7 月立项，8 月上线，9 月已在设备组日常使用，累计出库 61 条、0 条错出。</p>
+
+  <div class="board">
+    <div class="cell">
+      <div class="n">≤10<small>秒</small></div>
+      <div class="l">单条出库耗时</div>
+      <div class="s">原人工 2~3 分钟</div>
+    </div>
+    <div class="cell">
+      <div class="n">↓95<small>%</small></div>
+      <div class="l">录入工时</div>
+      <div class="s">按运行日志测算</div>
+    </div>
+    <div class="cell">
+      <div class="n green">0</div>
+      <div class="l">条代码错出</div>
+      <div class="s">错误代码自动拦截</div>
+    </div>
+    <div class="cell">
+      <div class="n">61<small>条</small></div>
+      <div class="l">累计出库记录</div>
+      <div class="s">8/17—9/11 · 7 个出库日</div>
+    </div>
+    <div class="cell">
+      <div class="n">981<small>个</small></div>
+      <div class="l">资材二维码</div>
+      <div class="s">扫码带入代码</div>
+    </div>
+  </div>
+
+  <!-- 维度一 -->
+  <div class="sec">
+    <div class="sec-h">
+      <span class="idx">DIM-01</span>
+      <h2>实用性</h2>
+      <span class="w">权重 30</span>
+    </div>
+    <div class="mods">
+      <div class="mod">
+        <div class="mod-h"><span class="no">01</span><span class="nm">贴合业务痛点</span></div>
+        <p>出库要在 IMC 里逐条填代码、数量、部门、机组，保存后还要手动勾选提交。四个痛点都是日常真实发生的：</p>
+        <ul>
+          <li>资材代码 9~10 位，人工抄写少一位、错一位，系统查不到就得重来。</li>
+          <li>申请靠口头、微信传递，部门机组写法不统一（“2050落料”与“L1-2050落料”混用）。</li>
+          <li>只有办公电脑能操作，现场班组要打电话让人代录。</li>
+          <li>同一个班组的资材也要逐张提交，单据靠人工合并。</li>
+        </ul>
+        <p class="note">实例：BWD0900037 抄成 BWD090037、BWD0404150 抄成 BED0404150，当天没出成库。</p>
+      </div>
+      <div class="mod">
+        <div class="mod-h"><span class="no">02</span><span class="nm">落地可行性</span></div>
+        <ul>
+          <li><b>已实际投用</b>：2026/8/17—9/11 共 7 个出库日、61 条出库记录、526 件物料。</li>
+          <li><b>不改现有系统</b>：沿用公司白名单账号与 IMC 现有页面流程，未要求 IMC 开放接口、未新增服务器采购。</li>
+          <li><b>使用门槛低</b>：现场用手机打开网页填表；批量走腾讯文档或 Excel，不需要培训专门软件。</li>
+        </ul>
+      </div>
+      <div class="mod">
+        <div class="mod-h"><span class="no">03</span><span class="nm">推广复用价值</span></div>
+        <ul>
+          <li>部门／机组对照表可配置（现有 5 个部门、12 个机组），换部门只需改这张表。</li>
+          <li>资材二维码体系已建成 981 个，新资材按同一模板补码即可延用。</li>
+          <li>方法不依赖 IMC 专有接口，同类内网系统的填报场景可直接迁移。</li>
+        </ul>
+      </div>
+      <div class="mod">
+        <div class="mod-h"><span class="no">04</span><span class="nm">对业务的实际改变</span></div>
+        <p>出库从“申请与录入分两地、经手两个人”，变成“现场填一次、程序自动落账”：</p>
+        <ul>
+          <li>改前：口头／纸质申请 › 人工查代码 › 逐条录入 IMC › 逐张勾选提交</li>
+          <li>改后：手机扫码或输码 › 填数量、选部门机组 › 点提交，出库完成</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- 维度二 -->
+  <div class="sec">
+    <div class="sec-h">
+      <span class="idx">DIM-02</span>
+      <h2>效率提升率</h2>
+      <span class="w">权重 25</span>
+    </div>
+    <div class="grid2">
+      <div>
+        <h3>时间节省比例</h3>
+        <div class="bar">
+          <div class="nm">单条出库</div>
+          <div class="tr"><div class="fl before" style="width:100%"></div></div>
+          <div class="cap">人工 <b>2~3 分钟</b></div>
+        </div>
+        <div class="bar">
+          <div class="nm"></div>
+          <div class="tr"><div class="fl after" style="width:7%"></div></div>
+          <div class="cap">程序 <b>≤10 秒</b>（↓95%）</div>
+        </div>
+        <div class="bar">
+          <div class="nm">批量 18 项</div>
+          <div class="tr"><div class="fl before" style="width:100%"></div></div>
+          <div class="cap">人工 <b>约 50 分钟</b></div>
+        </div>
+        <div class="bar">
+          <div class="nm"></div>
+          <div class="tr"><div class="fl after" style="width:5%"></div></div>
+          <div class="cap">程序 <b>约 10 秒</b>，并成 1 张单</div>
+        </div>
+        <p class="note">横条按人工耗时等比示意；耗时依据程序运行日志。</p>
+      </div>
+      <div>
+        <h3>处理吞吐量提升</h3>
+        <ul>
+          <li><b>一次提交多条</b>：18 项物料一次操作完成，程序按“部门＋机组”自动合并为 1 张出库单，替代逐张提交。</li>
+          <li><b>多张单并行</b>：不同的部门／机组会自动拆成对应出库单，一次操作完成多张单。</li>
+          <li><b>填报不受地点限制</b>：现场手机提交，省掉往返办公室和电话委托的时间。</li>
+          <li><b>批量入口</b>：班组把需求汇总到腾讯文档／Excel，一键出库，不再逐条键入。</li>
+        </ul>
+        <table>
+          <tr><th>口径</th><th>数据</th></tr>
+          <tr><td>累计出库记录</td><td class="v">61 条</td></tr>
+          <tr><td>合计物料数量</td><td class="v">526 件</td></tr>
+          <tr><td>涉及资材种类</td><td class="v">49 种</td></tr>
+          <tr><td>覆盖出库日</td><td class="v">7 天</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- 维度三 -->
+  <div class="sec">
+    <div class="sec-h">
+      <span class="idx">DIM-03</span>
+      <h2>稳定性</h2>
+      <span class="w">权重 25</span>
+    </div>
+    <div class="mods">
+      <div class="mod">
+        <div class="mod-h"><span class="no">01</span><span class="nm">异常处理完备性</span></div>
+        <ul>
+          <li><b>代码严格校验</b>：IMC 查询属前缀匹配，代码少打几位会返回别的物资。为此加了“返回代码必须与输入完全一致”的校验，不完整直接拒绝。</li>
+          <li><b>批次内互不影响</b>：某一条查询失败或提交失败，同一批的其他记录照常出库，失败原因单独记录。</li>
+          <li><b>逐条留痕</b>：每次出库生成结果文件（代码、数量、部门、机组、结果、消息），可回溯到具体执行时刻。</li>
+        </ul>
+        <p class="note">已拦截实例：输入 ADB0100 会匹配到 ADB0100349（另一种物资），现在会被直接拒绝。</p>
+      </div>
+      <div class="mod">
+        <div class="mod-h"><span class="no">02</span><span class="nm">连续运行成功率</span></div>
+        <ul>
+          <li>2026/8/17—9/11 共 7 个出库日持续使用，无中断。</li>
+          <li>61 条出库记录全部提交成功，<b>0 条代码错出</b>。</li>
+          <li>单条与批量两条路径均已实测通过，其中批量 18 项一次完成。</li>
+        </ul>
+        <table>
+          <tr><th>指标</th><th>结果</th></tr>
+          <tr><td>出库成功</td><td class="v">61 条</td></tr>
+          <tr><td>代码错出</td><td class="v">0 条</td></tr>
+          <tr><td>连续运行</td><td class="v">7 个出库日</td></tr>
+        </table>
+      </div>
+      <div class="mod">
+        <div class="mod-h"><span class="no">03</span><span class="nm">容错机制</span></div>
+        <ul>
+          <li><b>登录态自动维护</b>：白名单账号自动登录，会话过期自动重登，无需人工干预。</li>
+          <li><b>通道自动恢复</b>：公网通道断开后自动重连，现场填报不依赖人工拉起。</li>
+          <li><b>明细台账自动汇总</b>：出库记录自动归集为台账，重复提交与漏记都可核对。</li>
+          <li><b>旧数据自动纠正</b>：台账汇总时按“同一记录出现过失败即不算成功”的规则剔除误标数据。</li>
+        </ul>
+      </div>
+      <div class="mod">
+        <div class="mod-h"><span class="no">04</span><span class="nm">可核查性</span></div>
+        <p>所有指标都能落到文件：</p>
+        <ul>
+          <li>每次出库的结果文件（含成功／失败与原因）。</li>
+          <li>出库明细台账（Excel 与网页两种形式，可按代码、名称、部门筛选）。</li>
+          <li>程序运行日志（耗时与执行时间）。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- 维度四 -->
+  <div class="sec">
+    <div class="sec-h">
+      <span class="idx">DIM-04</span>
+      <h2>创新性</h2>
+      <span class="w">权重 20</span>
+    </div>
+    <div class="mods">
+      <div class="mod">
+        <div class="mod-h"><span class="no">01</span><span class="nm">场景创新度</span></div>
+        <p>IMC 只能在公司内网访问，原来的做法只能在办公电脑上操作。本项目让<b>手机在任何网络</b>（含 4G/外网）都能完成内网系统的出库提交，现场人员在库位边就能操作，省掉回办公室这一段。</p>
+        <p>出库作业因此从“两地两人”变成“现场一人一次填写”。</p>
+      </div>
+      <div class="mod">
+        <div class="mod-h"><span class="no">02</span><span class="nm">技术实现思路</span></div>
+        <ul>
+          <li>不依赖 IMC 开放接口：用程序还原页面上的“勾选 → 提交”动作，提交结构与手工操作完全一致。</li>
+          <li>白名单账号自动登录与会话保持，替代人工输验证码。</li>
+          <li>发现并修复了 IMC 前缀匹配隐患（代码不完整时会匹配到其他物资），从机制上防止错出。</li>
+        </ul>
+      </div>
+      <div class="mod">
+        <div class="mod-h"><span class="no">03</span><span class="nm">跨系统整合能力</span></div>
+        <div class="chain">
+          <div class="node"><div class="st">01 填报</div><div class="nt">手机网页 / 二维码</div><div class="nd">扫码或输码，填写数量与部门机组</div></div>
+          <div class="node"><div class="st">02 通道</div><div class="nt">公网中转</div><div class="nd">把外网请求送回公司电脑</div></div>
+          <div class="node"><div class="st">03 处理</div><div class="nt">出库程序</div><div class="nd">校核代码、拼单、批量提交</div></div>
+          <div class="node"><div class="st">04 落账</div><div class="nt">IMC 出库单</div><div class="nd">MMPM0320 自动保存</div></div>
+        </div>
+      </div>
+      <div class="mod">
+        <div class="mod-h"><span class="no">04</span><span class="nm">整合的系统</span></div>
+        <ul>
+          <li>IMC 资材领用单（MMPM0320）</li>
+          <li>在线表单（腾讯文档）与 Excel 申请单</li>
+          <li>资材二维码体系（981 个）</li>
+          <li>公网中转通道与本地出库服务</li>
+          <li>出库明细台账（自动汇总与导出）</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- 收尾 -->
+  <div class="sec">
+    <div class="sec-h">
+      <span class="idx">OUT-05</span>
+      <h2>成效与后续</h2>
+    </div>
+    <div class="grid2">
+      <div>
+        <h3>可核查的成效</h3>
+        <table>
+          <tr><th>指标</th><th>改善前</th><th>改善后</th></tr>
+          <tr><td>单条出库耗时</td><td>2~3 分钟</td><td class="v">≤10 秒</td></tr>
+          <tr><td>批量 18 项</td><td>约 50 分钟</td><td class="v">约 10 秒</td></tr>
+          <tr><td>出库单张数</td><td>逐条各一张</td><td class="v">按部门机组自动合并</td></tr>
+          <tr><td>代码错出</td><td>偶有发生</td><td class="v">0 条</td></tr>
+          <tr><td>提交地点</td><td>仅办公电脑</td><td class="v">手机任意网络</td></tr>
+        </table>
+      </div>
+      <div>
+        <h3>下一步计划</h3>
+        <ul>
+          <li>把入库与盘点接入同一套流程，形成资材出入库闭环。</li>
+          <li>手机端增加出库记录查询与库存提示，领料前可先看库存。</li>
+          <li>出库明细台账定期自动汇总，替代人工统计。</li>
+          <li>将部门／机组对照表和二维码模板推广到其他作业区。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <div>项目 <b>资材出库作业自动化</b></div>
+    <div>成员 <b>张东旭（设备组，队长）</b></div>
+    <div>单位 <b>长春宝友 · 设备组</b></div>
+    <div>报告日期 <b>2026-09-16</b></div>
+  </footer>
+
+</div>
+</body>
+</html>
